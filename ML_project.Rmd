@@ -1,0 +1,97 @@
+Machine Learning Project 
+========================================================
+
+First we load the datasets.
+
+```{r}
+setwd('D:\\Data\\datasets')
+trainingdata<-read.csv("pml-training.csv",header=TRUE,na.strings=c("NA",""))
+testdata<-read.csv("pml-testing.csv",header=TRUE,na.strings=c("NA",""))
+
+```
+
+Now we look at the training data 
+```{r}
+str(trainingdata)
+table(trainingdata$classe)
+```
+
+Removing variables with missing values (NAs)
+```{r}
+
+isNASum<-function(x){
+  return (sum(is.na(x)))
+}
+
+
+bad_train<-apply(trainingdata,2,isNASum)==19216
+train2<-trainingdata[,!bad_train]
+
+bad_test<-apply(testdata,2,isNASum)==20
+test2<-testdata[,!bad_test]
+
+```
+Remove unuseful variables, keep only numeric ones.
+```{r}
+removeVars<-grep("X|user_name|timestamp|new_window|num_window",names(train2))
+train3<-(train2[,-c(removeVars,length(train2))])
+test3<-(test2[,-c(removeVars,length(test2))])
+
+```
+
+check for near-zero covariates as well as covariates that are highly correlated. Remove them.
+```{r}
+library(caret)
+nzv<-nearZeroVar(train3,saveMetrics=TRUE)
+nzv
+```
+
+From above, it looks like there aren't any near-zero covariates. 
+
+We'll look at correlations among covariates.
+
+
+```{r fig.width=7, fig.height=8}
+corrs<-cor(train3)
+library(corrplot)
+corrplot(corrs,method="square",tl.cex=0.5)
+
+highCorr<-findCorrelation(corrs,cutoff=0.75)
+train4<-cbind(classe=train2$classe,train3[,-highCorr])
+test4<-test3[,-highCorr]
+
+```
+
+Split the training data into training/testing for model evaluation
+```{r}
+set.seed(1234)
+inTrain <-createDataPartition(train4$classe,p=0.75,list=FALSE)
+trainPart<-train4[inTrain,]
+testPart<-train4[-inTrain,]
+```
+
+Random Forest algorithm to predict
+```{r}
+library(randomForest)
+rfModel<-randomForest(classe~.,data=trainPart,importance=TRUE,ntree=500)
+print(rfModel)
+```
+in-sample 
+```{r}
+out.test<-predict(rfModel,testPart)
+table(testPart$classe, out.test)
+```
+out-sample 
+```{r}
+out.test<-predict(rfModel,test4)
+answers<- as.vector(out.test[1:20])
+#answers = rep("A", 20)
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
